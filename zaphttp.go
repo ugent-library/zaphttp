@@ -20,7 +20,7 @@ func (c contextKey) String() string {
 
 var loggerKey = contextKey("logger")
 
-// Retrieve the zap logger set with the SetLogger middleware from Context
+// Retrieve the zap logger set with the SetLogger middleware from Context.
 func Logger(c context.Context) *zap.Logger {
 	if l := c.Value(loggerKey); l != nil {
 		return l.(*zap.Logger)
@@ -29,8 +29,8 @@ func Logger(c context.Context) *zap.Logger {
 }
 
 // SetLogger is a middleware to set a zap logger in the request Context. If the
-// X-Request-ID header is set, a request scoped logger with a requestID field will
-// be set.
+// X-Request-ID header is present, the logger will be set to a request scoped
+// logger with a requestID field.
 func SetLogger(logger *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +44,7 @@ func SetLogger(logger *zap.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// LogRequests is a middleware to log requests to the logger set by the SetLogger middleware.
+// LogRequests is a middleware to log requests to a zap logger.
 // The message will be set to "request" and the following request fields will be logged:
 //   - method (string)
 //   - url (string)
@@ -53,28 +53,23 @@ func SetLogger(logger *zap.Logger) func(http.Handler) http.Handler {
 //   - bytes (int64)
 //
 // The log level will be set to error if status >= 500, info otherwise.
-func LogRequests(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		l := Logger(r.Context())
+func LogRequests(logger *zap.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			m := httpsnoop.CaptureMetrics(next, w, r)
 
-		if l == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
+			lvl := zapcore.InfoLevel
+			if m.Code >= 500 {
+				lvl = zapcore.ErrorLevel
+			}
 
-		m := httpsnoop.CaptureMetrics(next, w, r)
-
-		lvl := zapcore.InfoLevel
-		if m.Code >= 500 {
-			lvl = zapcore.ErrorLevel
-		}
-
-		l.Log(lvl, "request",
-			zap.String("method", r.Method),
-			zap.String("url", r.URL.String()),
-			zap.Int("status", m.Code),
-			zap.Duration("latency", m.Duration),
-			zap.Int64("bytes", m.Written),
-		)
-	})
+			logger.Log(lvl, "request",
+				zap.String("method", r.Method),
+				zap.String("url", r.URL.String()),
+				zap.Int("status", m.Code),
+				zap.Duration("latency", m.Duration),
+				zap.Int64("bytes", m.Written),
+			)
+		})
+	}
 }

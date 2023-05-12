@@ -40,9 +40,10 @@ func Logger(c context.Context) *zap.Logger {
 }
 
 // SetLogger is a middleware to set a zap logger in the request Context.
-func SetLogger(l *zap.Logger, opts ...Option) func(http.Handler) http.Handler {
+func SetLogger(logger *zap.Logger, opts ...Option) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			l := logger
 			for _, o := range opts {
 				l = o(l, r)
 			}
@@ -62,9 +63,10 @@ func SetLogger(l *zap.Logger, opts ...Option) func(http.Handler) http.Handler {
 //   - bytes (int64)
 //
 // The log level will be set to error if status >= 500, info otherwise.
-func LogRequests(l *zap.Logger, opts ...Option) func(http.Handler) http.Handler {
+func LogRequests(logger *zap.Logger, opts ...Option) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			l := logger
 			for _, o := range opts {
 				l = o(l, r)
 			}

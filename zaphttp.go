@@ -20,6 +20,17 @@ func (c contextKey) String() string {
 
 var loggerKey = contextKey("logger")
 
+type Option func(*zap.Logger, *http.Request) *zap.Logger
+
+// Option that sets a request scoped logger with a requestID field if a
+// X-Request-Id header is present.
+func WithRequestID(l *zap.Logger, r *http.Request) *zap.Logger {
+	if requestID := r.Header.Get("X-Request-Id"); requestID != "" {
+		l = l.With(zap.String("requestID", requestID))
+	}
+	return l
+}
+
 // Retrieve the zap logger set with the SetLogger middleware from Context.
 func Logger(c context.Context) *zap.Logger {
 	if l := c.Value(loggerKey); l != nil {
@@ -28,15 +39,12 @@ func Logger(c context.Context) *zap.Logger {
 	return nil
 }
 
-// SetLogger is a middleware to set a zap logger in the request Context. If a
-// X-Request-Id header is present, the logger will be set to a request scoped
-// logger with a requestID field.
-func SetLogger(logger *zap.Logger) func(http.Handler) http.Handler {
+// SetLogger is a middleware to set a zap logger in the request Context.
+func SetLogger(l *zap.Logger, opts ...Option) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			l := logger
-			if requestID := r.Header.Get("X-Request-Id"); requestID != "" {
-				l = l.With(zap.String("requestID", requestID))
+			for _, o := range opts {
+				l = o(l, r)
 			}
 			c := context.WithValue(r.Context(), loggerKey, l)
 			next.ServeHTTP(w, r.WithContext(c))
@@ -46,7 +54,6 @@ func SetLogger(logger *zap.Logger) func(http.Handler) http.Handler {
 
 // LogRequests is a middleware to log requests to a zap logger.
 // The message will be set to "request" and the following request fields will be logged:
-//   - requestID (string)
 //   - method (string)
 //   - url (string)
 //   - remoteAddr (string)
@@ -54,15 +61,12 @@ func SetLogger(logger *zap.Logger) func(http.Handler) http.Handler {
 //   - latency (time.Duration)
 //   - bytes (int64)
 //
-// The requestID field will only be set if a X-Request-Id header is present.
-//
 // The log level will be set to error if status >= 500, info otherwise.
-func LogRequests(logger *zap.Logger) func(http.Handler) http.Handler {
+func LogRequests(l *zap.Logger, opts ...Option) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			l := logger
-			if requestID := r.Header.Get("X-Request-Id"); requestID != "" {
-				l = l.With(zap.String("requestID", requestID))
+			for _, o := range opts {
+				l = o(l, r)
 			}
 
 			m := httpsnoop.CaptureMetrics(next, w, r)

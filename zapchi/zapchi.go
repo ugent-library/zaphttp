@@ -14,13 +14,13 @@ func RequestID(l *zap.Logger, r *http.Request) *zap.Logger {
 	return l.With(zap.String("requestID", middleware.GetReqID(r.Context())))
 }
 
-func RequestLogger() middleware.RequestLogger {
-	return &requestLogger{}
+func LogFormatter() middleware.LogFormatter {
+	return &logFormatter{}
 }
 
-type requestLogger struct{}
+type logFormatter struct{}
 
-func (l *requestLogger) NewLogEntry(r *http.Request) middleware.LogEntry {
+func (l *logFormatter) NewLogEntry(r *http.Request) middleware.LogEntry {
 	logger := zaphttp.Logger(r.Context()).With(
 		zap.String("remoteAddr", r.RemoteAddr),
 		zap.String("method", r.Method),

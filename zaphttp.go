@@ -7,9 +7,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/felixge/httpsnoop"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type contextKey string
@@ -21,15 +19,6 @@ func (c contextKey) String() string {
 var loggerKey = contextKey("logger")
 
 type Option func(*zap.Logger, *http.Request) *zap.Logger
-
-// Option that sets a request scoped logger with a requestID field if a
-// X-Request-Id header is present.
-func WithRequestID(l *zap.Logger, r *http.Request) *zap.Logger {
-	if requestID := r.Header.Get("X-Request-Id"); requestID != "" {
-		l = l.With(zap.String("requestID", requestID))
-	}
-	return l
-}
 
 // Retrieve the zap logger set with the SetLogger middleware from Context.
 func Logger(c context.Context) *zap.Logger {
@@ -49,43 +38,6 @@ func SetLogger(logger *zap.Logger, opts ...Option) func(http.Handler) http.Handl
 			}
 			c := context.WithValue(r.Context(), loggerKey, l)
 			next.ServeHTTP(w, r.WithContext(c))
-		})
-	}
-}
-
-// LogRequests is a middleware to log requests to a zap logger.
-// The message will be set to "request" and the following request fields will be logged:
-//   - method (string)
-//   - url (string)
-//   - remoteAddr (string)
-//   - status (int)
-//   - latency (time.Duration)
-//   - bytes (int64)
-//
-// The log level will be set to error if status >= 500, info otherwise.
-func LogRequests(logger *zap.Logger, opts ...Option) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			l := logger
-			for _, o := range opts {
-				l = o(l, r)
-			}
-
-			m := httpsnoop.CaptureMetrics(next, w, r)
-
-			lvl := zapcore.InfoLevel
-			if m.Code >= 500 {
-				lvl = zapcore.ErrorLevel
-			}
-
-			l.Log(lvl, "request",
-				zap.String("method", r.Method),
-				zap.String("url", r.URL.String()),
-				zap.String("remoteAddr", r.RemoteAddr),
-				zap.Int("status", m.Code),
-				zap.Duration("latency", m.Duration),
-				zap.Int64("bytes", m.Written),
-			)
 		})
 	}
 }
